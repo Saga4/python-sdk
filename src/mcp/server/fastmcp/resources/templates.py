@@ -59,9 +59,8 @@ class ResourceTemplate(BaseModel):
 
     def matches(self, uri: str) -> dict[str, Any] | None:
         """Check if URI matches template and extract parameters."""
-        # Convert template to regex pattern
-        pattern = self.uri_template.replace("{", "(?P<").replace("}", ">[^/]+)")
-        match = re.match(f"^{pattern}$", uri)
+        # Use precompiled regex pattern for much faster matching.
+        match = self._compiled_uri_re.match(uri)
         if match:
             return match.groupdict()
         return None
@@ -83,3 +82,14 @@ class ResourceTemplate(BaseModel):
             )
         except Exception as e:
             raise ValueError(f"Error creating resource from template: {e}")
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        # Precompile the regex pattern only once per instance.
+        self._compiled_uri_re = self._build_uri_regex(self.uri_template)
+
+    @staticmethod
+    def _build_uri_regex(uri_template: str) -> re.Pattern:
+        # Replace {param} with named groups in regex.
+        pattern = re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", uri_template)
+        return re.compile(f"^{pattern}$")
