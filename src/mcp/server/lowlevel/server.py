@@ -177,40 +177,36 @@ class Server(Generic[LifespanResultT]):
         experimental_capabilities: dict[str, dict[str, Any]],
     ) -> types.ServerCapabilities:
         """Convert existing handlers to a ServerCapabilities object."""
-        prompts_capability = None
-        resources_capability = None
-        tools_capability = None
-        logging_capability = None
+        request_handlers = self.request_handlers
 
-        # Set prompt capabilities if handler exists
-        if types.ListPromptsRequest in self.request_handlers:
-            prompts_capability = types.PromptsCapability(
+        # Compute which handlers exist - local vars for speed
+        has_prompts = types.ListPromptsRequest in request_handlers
+        has_resources = types.ListResourcesRequest in request_handlers
+        has_tools = types.ListToolsRequest in request_handlers
+        has_logging = types.SetLevelRequest in request_handlers
+
+        # Compose args for ServerCapabilities as dict
+        capabilities = {}
+
+        if has_prompts:
+            capabilities["prompts"] = types.PromptsCapability(
                 listChanged=notification_options.prompts_changed
             )
-
-        # Set resource capabilities if handler exists
-        if types.ListResourcesRequest in self.request_handlers:
-            resources_capability = types.ResourcesCapability(
+        if has_resources:
+            capabilities["resources"] = types.ResourcesCapability(
                 subscribe=False, listChanged=notification_options.resources_changed
             )
-
-        # Set tool capabilities if handler exists
-        if types.ListToolsRequest in self.request_handlers:
-            tools_capability = types.ToolsCapability(
+        if has_tools:
+            capabilities["tools"] = types.ToolsCapability(
                 listChanged=notification_options.tools_changed
             )
+        if has_logging:
+            capabilities["logging"] = types.LoggingCapability()
 
-        # Set logging capabilities if handler exists
-        if types.SetLevelRequest in self.request_handlers:
-            logging_capability = types.LoggingCapability()
+        capabilities["experimental"] = experimental_capabilities
 
-        return types.ServerCapabilities(
-            prompts=prompts_capability,
-            resources=resources_capability,
-            tools=tools_capability,
-            logging=logging_capability,
-            experimental=experimental_capabilities,
-        )
+        # Only pass fields that have been set
+        return types.ServerCapabilities(**capabilities)
 
     @property
     def request_context(self) -> RequestContext[ServerSession, LifespanResultT]:
@@ -576,14 +572,12 @@ class Server(Generic[LifespanResultT]):
             assert type(notify) in self.notification_handlers
 
             handler = self.notification_handlers[type(notify)]
-            logger.debug(
-                f"Dispatching notification of type " f"{type(notify).__name__}"
-            )
+            logger.debug(f"Dispatching notification of type {type(notify).__name__}")
 
             try:
                 await handler(notify)
             except Exception as err:
-                logger.error(f"Uncaught exception in notification handler: " f"{err}")
+                logger.error(f"Uncaught exception in notification handler: {err}")
 
 
 async def _ping_handler(request: types.PingRequest) -> types.ServerResult:
