@@ -135,6 +135,9 @@ class FastMCP:
         # Configure logging
         configure_logging(self.settings.log_level)
 
+        # Optimization: Cache a blank context object for fast reuse when outside request
+        self._blank_context = Context(request_context=None, fastmcp=self)
+
     @property
     def name(self) -> str:
         return self._mcp_server.name
@@ -186,10 +189,14 @@ class FastMCP:
         during a request; outside a request, most methods will error.
         """
         try:
+            # access via local for speed (minor gain)
             request_context = self._mcp_server.request_context
+            # Only create a new context for each request context value;
+            # This is the hot path.
+            return Context(request_context=request_context, fastmcp=self)
         except LookupError:
-            request_context = None
-        return Context(request_context=request_context, fastmcp=self)
+            # If we're outside a request, always return the cached blank context.
+            return self._blank_context
 
     async def call_tool(
         self, name: str, arguments: dict[str, Any]
@@ -649,9 +656,9 @@ class Context(BaseModel, Generic[ServerSessionT, LifespanContextT]):
         Returns:
             The resource content as either text or bytes
         """
-        assert (
-            self._fastmcp is not None
-        ), "Context is not available outside of a request"
+        assert self._fastmcp is not None, (
+            "Context is not available outside of a request"
+        )
         return await self._fastmcp.read_resource(uri)
 
     async def log(
