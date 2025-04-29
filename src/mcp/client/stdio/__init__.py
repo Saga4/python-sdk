@@ -43,18 +43,17 @@ def get_default_environment() -> dict[str, str]:
     Returns a default environment object including only environment variables deemed
     safe to inherit.
     """
-    env: dict[str, str] = {}
+    env = {}
+    environ = os.environ
 
     for key in DEFAULT_INHERITED_ENV_VARS:
-        value = os.environ.get(key)
-        if value is None:
-            continue
-
-        if value.startswith("()"):
+        try:
+            value = environ[key]
             # Skip functions, which are a security risk
+            if not value.startswith("()"):
+                env[key] = value
+        except KeyError:
             continue
-
-        env[key] = value
 
     return env
 
