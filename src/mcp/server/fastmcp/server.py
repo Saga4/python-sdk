@@ -3,7 +3,6 @@
 from __future__ import annotations as _annotations
 
 import inspect
-import re
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from contextlib import (
     AbstractAsyncContextManager,
@@ -350,22 +349,29 @@ class FastMCP:
                 data = await fetch_weather(city)
                 return f"Weather for {city}: {data}"
         """
-        # Check if user passed function directly instead of calling decorator
+        # Fast callable check avoids creating the decorator if unnecessary
         if callable(uri):
             raise TypeError(
                 "The @resource decorator was used incorrectly. "
                 "Did you forget to call it? Use @resource('uri') instead of @resource"
             )
 
-        def decorator(fn: AnyFunction) -> AnyFunction:
-            # Check if this should be a template
-            has_uri_params = "{" in uri and "}" in uri
-            has_func_params = bool(inspect.signature(fn).parameters)
+        mime = mime_type or "text/plain"  # minimize repeated or calls
 
-            if has_uri_params or has_func_params:
-                # Validate that URI params match function params
-                uri_params = set(re.findall(r"{(\w+)}", uri))
-                func_params = set(inspect.signature(fn).parameters.keys())
+        def decorator(fn: AnyFunction) -> AnyFunction:
+            # Use local vars to avoid recomputation
+            fn_sig = inspect.signature(fn)
+            fn_params = fn_sig.parameters
+
+            # Check template status: only run expensive regex/inspection if possible
+            if "{" in uri and "}" in uri or fn_params:
+                # Precomputed regex
+                uri_params = (
+                    set(_URI_PARAM_RE.findall(uri))
+                    if ("{" in uri and "}" in uri)
+                    else set()
+                )
+                func_params = set(fn_params.keys()) if fn_params else set()
 
                 if uri_params != func_params:
                     raise ValueError(
@@ -373,21 +379,20 @@ class FastMCP:
                         f"and function parameters {func_params}"
                     )
 
-                # Register as template
                 self._resource_manager.add_template(
                     fn=fn,
                     uri_template=uri,
                     name=name,
                     description=description,
-                    mime_type=mime_type or "text/plain",
+                    mime_type=mime,
                 )
             else:
-                # Register as regular resource
+                # This block never computes regex or signature unless needed
                 resource = FunctionResource(
                     uri=AnyUrl(uri),
                     name=name,
                     description=description,
-                    mime_type=mime_type or "text/plain",
+                    mime_type=mime,
                     fn=fn,
                 )
                 self.add_resource(resource)
@@ -649,9 +654,9 @@ class Context(BaseModel, Generic[ServerSessionT, LifespanContextT]):
         Returns:
             The resource content as either text or bytes
         """
-        assert (
-            self._fastmcp is not None
-        ), "Context is not available outside of a request"
+        assert self._fastmcp is not None, (
+            "Context is not available outside of a request"
+        )
         return await self._fastmcp.read_resource(uri)
 
     async def log(
