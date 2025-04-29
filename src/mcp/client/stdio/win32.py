@@ -26,15 +26,17 @@ def get_windows_executable_command(command: str) -> str:
         str: Windows-appropriate command path
     """
     try:
-        # First check if command exists in PATH as-is
-        if command_path := shutil.which(command):
+        # shutil.which already checks common extensions from PATHEXT on Windows
+        command_path = shutil.which(command)
+        if command_path:
             return command_path
 
-        # Check for Windows-specific extensions
-        for ext in [".cmd", ".bat", ".exe", ".ps1"]:
-            ext_version = f"{command}{ext}"
-            if ext_path := shutil.which(ext_version):
-                return ext_path
+        # Only fallback is for extensions not covered by PATHEXT, like .ps1
+        ext = ".ps1"
+        ext_version = f"{command}{ext}"
+        ext_path = shutil.which(ext_version)
+        if ext_path:
+            return ext_path
 
         # For regular commands or if we couldn't find special versions
         return command
