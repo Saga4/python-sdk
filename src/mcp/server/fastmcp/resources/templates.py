@@ -38,7 +38,7 @@ class ResourceTemplate(BaseModel):
         mime_type: str | None = None,
     ) -> ResourceTemplate:
         """Create a template from a function."""
-        func_name = name or fn.__name__
+        func_name = name if name is not None else fn.__name__
         if func_name == "<lambda>":
             raise ValueError("You must provide a name for lambda functions")
 
@@ -46,14 +46,21 @@ class ResourceTemplate(BaseModel):
         parameters = TypeAdapter(fn).json_schema()
 
         # ensure the arguments are properly cast
-        fn = validate_call(fn)
+        validated_fn = validate_call(fn)
+
+        # Precompute fallback/default values
+        docstring = fn.__doc__
+        final_description = (
+            description if description is not None else (docstring if docstring else "")
+        )
+        final_mime = mime_type if mime_type is not None else "text/plain"
 
         return cls(
             uri_template=uri_template,
             name=func_name,
-            description=description or fn.__doc__ or "",
-            mime_type=mime_type or "text/plain",
-            fn=fn,
+            description=final_description,
+            mime_type=final_mime,
+            fn=validated_fn,
             parameters=parameters,
         )
 
