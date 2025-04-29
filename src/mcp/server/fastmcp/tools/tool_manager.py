@@ -28,6 +28,9 @@ class ToolManager:
 
     def list_tools(self) -> list[Tool]:
         """List all registered tools."""
+        # Micro-opt: skip allocating a list if there are no tools at all.
+        if not self._tools:
+            return []
         return list(self._tools.values())
 
     def add_tool(
