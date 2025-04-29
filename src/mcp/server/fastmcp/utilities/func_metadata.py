@@ -26,10 +26,8 @@ class ArgModelBase(BaseModel):
 
         That is, sub-models etc are not dumped - they are kept as pydantic models.
         """
-        kwargs: dict[str, Any] = {}
-        for field_name in self.__class__.model_fields.keys():
-            kwargs[field_name] = getattr(self, field_name)
-        return kwargs
+        # Optimization: use self.__dict__.copy() for direct field access
+        return self.__dict__.copy()
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
