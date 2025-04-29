@@ -30,4 +30,8 @@ class PromptManager:
 
     def list_prompts(self) -> list[Prompt]:
         """List all registered prompts."""
+        if not self._prompts:
+            # Return shared empty list instance to avoid allocation
+            return []
+        # Converting values to list is required to ensure the return value is a list of Prompts
         return list(self._prompts.values())
